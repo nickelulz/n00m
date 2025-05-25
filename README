@@ -8,7 +8,7 @@ sudo apt install libglfw3-dev libcglm-dev
 
 2. Install the full repository recursively
 
-git clone https://github.com/nickelulz/n00m/n00m.git --recursive
+git clone https://github.com/nickelulz/n00m.git --recursive
 
 3. Enter the directory and run:
 
