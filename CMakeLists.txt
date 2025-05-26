@@ -16,6 +16,10 @@ include_directories(${CMAKE_SOURCE_DIR}/lib/log.c/src/)
 add_compile_definitions(LOG_USE_COLOR)
 set(SRC_FILES ${SRC_FILES} ${CMAKE_SOURCE_DIR}/lib/log.c/src/log.c)
 
+# Include and compile the INI library
+include_directories(${CMAKE_SOURCE_DIR}/lib/ini/src/)
+set(SRC_FILES ${SRC_FILES} ${CMAKE_SOURCE_DIR}/lib/ini/src/ini.c)
+
 # Include and compile GLAD
 include_directories(${CMAKE_SOURCE_DIR}/lib/glad/include)
 set(SRC_FILES ${SRC_FILES} ${CMAKE_SOURCE_DIR}/lib/glad/src/gl.c)

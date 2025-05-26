@@ -9,47 +9,40 @@
 #include <stddef.h>
 #include "log.h"
 
-static void 
-error_callback(int error, const char *description)
-{
-  log_error("%s", description);
-}
+#include "config.h"
+#include "graphics.h"
 
-static void 
-key_callback(GLFWwindow *window, int key, int scancode, int action, int mods)
+static void
+loop (graphics_t *gfx, state_t *state)
 {
-  if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-    glfwSetWindowShouldClose(window, GLFW_TRUE);
+  glClearColor(EXPAND_COLOR(gfx->background_color));
+  glClear(GL_COLOR_BUFFER_BIT);
+
+  graphics_draw(state->triangle);
+  
+  glfwSwapBuffers(gfx.window);
+  glfwPollEvents();
 }
 
 int main(int argc, char* argv[])
 {
-  printf("Hello, World!\n");
-  log_info("Hello from log.c!");
+  config_t config;
+  config_load(&config);
   
-  if (!glfwInit())
-    exit(EXIT_FAILURE);
+  graphics_t gfx;
+  graphics_init(&gfx);
 
-  GLFWwindow *window = glfwCreateWindow(640, 480, "Test", NULL, NULL);
-  if (!window) {
-    glfwTerminate();
-    exit(EXIT_FAILURE);
-  }
-
-  glfwSetKeyCallback(window, key_callback);
-  glfwMakeContextCurrent(window);
-  gladLoadGL(glfwGetProcAddress);
-  glfwSwapInterval(1);
-
-  // OpenGL Rendering
-
-  while (!glfwWindowShouldClose(window))
-  {
-    glfwSwapBuffers(window);
-    glfwPollEvents();
-  }
+  state_t state;
+  state_init(&state, &gfx);
   
-  glfwDestroyWindow(window);
-  glfwTerminate();
+  glGenBuffers(1, &gfx.vbo);
+  glBindBuffer(GL_ARRAY_BUFFER, gfx.vbo);
+
+  while (!glfwWindowShouldClose(gfx.window))
+    loop(gfx, state);
+
+  graphics_close(&gfx);
+  config_close(&config);
+  
   exit(EXIT_SUCCESS);
 }

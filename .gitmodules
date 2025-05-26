@@ -1,3 +1,6 @@
 [submodule "lib/log.c"]
 	path = lib/log.c
 	url = https://github.com/rxi/log.c.git
+[submodule "lib/ini"]
+	path = lib/ini
+	url = https://github.com/rxi/ini.git
