@@ -2,9 +2,9 @@ nickelulzian d00m renderer
 
 BUILD INSTRUCTIONS:
 
-1. Install GLFW and CGLM system-wide (Debian-Based):
+1. Install SDL, SDL-image, SDL-ttf and CGLM system-wide (Debian-Based):
 
-sudo apt install libglfw3-dev libcglm-dev
+sudo apt install libcglm-dev libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev
 
 2. Install the full repository recursively
 
