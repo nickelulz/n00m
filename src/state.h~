@@ -1,9 +1,0 @@
-#ifndef STATE_HEADER
-#define STATE_HEADER
-
-typedef struct _state
-{
-  
-} state_t;
-
-#endif

@@ -1,13 +1,14 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 #include "ini.h"
 #include "log.h"
 #include "config.h"
 
 void
-load_config(config_t *config, const char *config_filepath)
+config_load (config_t *config, const char *config_filepath)
 {
   ini_t *config_file = ini_load(config_filepath);
   if (!config_file) {
@@ -21,20 +22,24 @@ load_config(config_t *config, const char *config_filepath)
   {
     config->window_title = strdup(temp_title_buffer);
   }
-  
-  ini_sget(config_file, "window", "width",  "%d", &config->window_width);
-  ini_sget(config_file, "window", "height", "%d", &config->window_height);
+
+  ini_sget(config_file, "window", "width",  "%i", &config->window_width);
+  ini_sget(config_file, "window", "height", "%i", &config->window_height);
   
   ini_free(config_file);
+
+  log_debug("[Config] Window Title: %s", config->window_title);
+  log_debug("[Config] Window Dimensions: %d x %d",
+           config->window_width, config->window_height);
 }
 
 void
-config_close(config_t *config)
+config_close (config_t *config)
 {
   if (!config)
     return;
-  if (config->title) {
-    free(config->title);
-    config->title = NULL;
+  if (config->window_title) {
+    free(config->window_title);
+    config->window_title = NULL;
   }
 }
