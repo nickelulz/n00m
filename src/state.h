@@ -5,10 +5,10 @@
 #include <stdbool.h>
 
 #include "config.h"
+#include "player.h"
 
 typedef struct _state {
-  SDL_Color background_color, rectangle_color;
-  SDL_Rect rectangle;
+  player_t player;
   bool running;
 } state_t;
 
