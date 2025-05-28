@@ -4,7 +4,7 @@
 #include <cglm/cglm.h>
 
 typedef struct _player {
-  vec2s pos;
+  vec2s pos, dir;
 } player_t;
 
 #endif

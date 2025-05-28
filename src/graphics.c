@@ -1,7 +1,4 @@
-#include <stdlib.h>
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_image.h>
-#include <SDL2/SDL_ttf.h>
+#include "lib_common.h"
 
 #include "log.h"
 #include "config.h"

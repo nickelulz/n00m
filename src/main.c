@@ -1,31 +1,29 @@
 #include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <math.h>
-
-#include <SDL2/SDL.h>
-#include <cglm/cglm.h>
-#include "log.h"
+#include "lib_common.h"
 
 #include "color.h"
 #include "config.h"
 #include "graphics.h"
 #include "state.h"
 
+static SDL_Color
+get_map_color (int map_value)
+{
+  switch (map_value) {
+  case 1: return COLOR_RED;
+  case 2: return COLOR_GREEN;
+  case 3: return COLOR_BLUE;
+  case 4: return COLOR_WHITE;
+  default: return COLOR_ORANGE;
+  }
+}
+
 static void
 draw_current_frame (graphics_t *gfx, state_t *state)
 {
   /* Get the current box of the map that we are in */
   player_t *player = &state->player;
-  
-  ivec2s resolution;
-  if (!SDL_GetWindowSize(gfx->window, &resolution.x, &resolution.y)) {
-    log_error("Could not get window dimensions!\n"
-              "SDL Error: %s", SDL_GetError());
-    state->running = false;
-    return;
-  }
+  ivec2s resolution = state->resolution;
   
   for (int x = 0; x < resolution.x; ++x) {
     float camera_x = 2 * x / ((float) resolution.x) - 1;
@@ -34,9 +32,10 @@ draw_current_frame (graphics_t *gfx, state_t *state)
       player->dir.x + state->camera_plane.x * camera_x,
       player->dir.y + state->camera_plane.y * camera_x
     };
-
+    
     /* which box of the map we're in */
-    ivec2s map_pos = {
+    ivec2s map_pos =
+    {
       (int) player->dir.x,
       (int) player->dir.y
     };
@@ -47,7 +46,8 @@ draw_current_frame (graphics_t *gfx, state_t *state)
     const float INF = 100;
     
     /* length of the ray from one x or y-side to the next x or y side */
-    vec2s delta_dist = {
+    vec2s delta_dist =
+    {
       (ray_dir.x == 0) ? INF : (float) fabs(1 / ray_dir.x),
       (ray_dir.y == 0) ? INF : (float) fabs(1 / ray_dir.y)
     };
@@ -57,8 +57,8 @@ draw_current_frame (graphics_t *gfx, state_t *state)
     /* what direction to step in x or y-direction (either +1 or -1) */
     ivec2s step;
 
-    bool wall_hit,   /* was there a wall a hit? */
-      side_wall_hit; /* was a north-south or east-west wall hit? */
+    bool wall_hit      = false, /* was there a wall a hit? */
+         side_wall_hit = false; /* was a north-south or east-west wall hit? */
 
     /* Calculate the step and initial side distance */    
     if (ray_dir.x < 0) {
@@ -94,14 +94,14 @@ draw_current_frame (graphics_t *gfx, state_t *state)
 
       /* check if ray has hit a wall */
       if (state->map[map_pos.x][map_pos.y] > 0)
-        side_wall_hit = true;
+        wall_hit = true;
     }
 
     if (side_wall_hit)
       perp_wall_dist = side_dist.x - delta_dist.x;
     else
       perp_wall_dist = side_dist.y - delta_dist.y;
-
+    
     /* calculate height of line to draw on screen */
     int line_height = (int) (resolution.y / perp_wall_dist);
 
@@ -128,19 +128,83 @@ draw_current_frame (graphics_t *gfx, state_t *state)
 }
 
 static void
-handle_events(SDL_Event event, state_t *state)
+poll_events (state_t *state)
 {
-  if (event.type == SDL_QUIT)
-    state.running = false;
+  SDL_Event event;
+  while (SDL_PollEvent(&event))
+  {
+    switch (event.type) {
+    case SDL_QUIT:
+      state->running = false;
+      break;
+    case SDL_KEYDOWN:
+      state->keys[event.key.keysym.scancode] = true;
+      break;
+    case SDL_KEYUP:
+      state->keys[event.key.keysym.scancode] = false;
+      break;
+    }
+  }
 }
 
+static void
+handle_keys(state_t *state)
+{
+  if (state->keys[SDL_SCANCODE_ESCAPE])
+    state->running = false;
+}
+
+static void
+draw_debug(graphics_t *gfx, state_t *state)
+{
+  char debug_text_buffer[512];
+  if (!state->timer.infinite_fps)
+    snprintf(debug_text_buffer, 512, "FPS: %.1f", state->timer.fps);
+  else
+    snprintf(debug_text_buffer, 512, "FPS: Infinite");
+
+  /* render the text to a surface */
+  SDL_Surface *text_surface = TTF_RenderText_Solid(state->debug_font,
+						   debug_text_buffer,
+						   COLOR_WHITE);
+  
+  /* render the surface to a texture */
+  SDL_Texture *rendered_texture = SDL_CreateTextureFromSurface(gfx->renderer,
+							       text_surface);
+  
+  /* configure the text's position (top right corner) */
+  vec2s text_pos;
+  ivec2s text_size;
+  SDL_Rect text_bb = { 0, 0, 100, 100 };
+  
+  /* calculate the projected text size */
+  if (TTF_SizeText(state->debug_font, debug_text_buffer,
+		   &text_size.x, &text_size.y) < 0)
+    log_error("Unable to calculate projected debug text size! Using default sizing values.");
+  else {
+    text_pos.x = state->resolution.x - text_size.x - DEBUG_TEXT_PADDING;
+    text_pos.y = DEBUG_TEXT_PADDING - 2;
+    text_bb = (SDL_Rect) { text_pos.x, text_pos.y,
+			   (float) text_size.x, (float) text_size.y };
+  }
+  
+  /* draw the final texture to the screen */
+  SDL_RenderCopy(gfx->renderer, rendered_texture, NULL, &text_bb);
+
+  /* free the previous surfaces and textures */
+  SDL_FreeSurface(text_surface);
+  SDL_DestroyTexture(rendered_texture);
+}
+  
 int
 main (void)
 {
   log_info("Initializing");
+
+  /* note: DO NOT break the initialization order */
   
   config_t config;
-  config_load(&config, "config.ini");
+  config_load(&config, CONFIG_FILEPATH);
 
   graphics_t gfx;
   graphics_init(&gfx, &config);
@@ -151,10 +215,19 @@ main (void)
   log_info("Looping");
   
   while (state.running) {
-    SDL_Event event;
-    SDL_WaitEvent(&event);
+    /* time current frame */
+    state.timer.ticks = SDL_GetTicks();
+    uint64_t frame_begin = SDL_GetPerformanceCounter();
+    state.timer.last_update_time = frame_begin;
 
-    handle_events(event, &state);
+    /* poll the current window size */
+    SDL_GetWindowSize(gfx.window,
+		      &state.resolution.x,
+		      &state.resolution.y);
+    
+    /* Poll for events  */
+    poll_events(&state);
+    handle_keys(&state);
     
     /* Initialize the renderer color the background */
     SDL_SetRenderDrawColor(gfx.renderer, EXPAND_COLOR(COLOR_BLACK));
@@ -162,9 +235,24 @@ main (void)
 
     /* draw the current frame */
     draw_current_frame(&gfx, &state);
+    draw_debug(&gfx, &state);
 
     /* Update the Screen */
     SDL_RenderPresent(gfx.renderer);
+
+    /* time frame and calculate fps */
+    uint64_t frame_end = SDL_GetPerformanceCounter();
+    uint64_t frame_diff = frame_end - frame_begin;
+    float frequency = (float) SDL_GetPerformanceFrequency();
+    
+    state.timer.fps = frame_diff / frequency;
+    if (state.timer.fps < 0.1)
+      state.timer.infinite_fps = true;
+    else
+      state.timer.infinite_fps = false;
+    
+    /* increase frame counter */
+    ++state.timer.frames;
   }
   
   log_info("Closing");

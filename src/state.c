@@ -1,63 +1,55 @@
 #include <stdint.h>
-#include <stdbool.h>
+#include <string.h>
+#include "lib_common.h"
 
 #include "color.h"
 #include "state.h"
 #include "config.h"
 #include "util.h"
 
-#define MAP_WIDTH  24
-#define MAP_HEIGHT 24
-
-static const
-int MAP[MAP_WIDTH][MAP_HEIGHT]=
-{
-  {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,2,2,2,2,2,0,0,0,0,3,0,3,0,3,0,0,0,1},
-  {1,0,0,0,0,0,2,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,2,0,0,0,2,0,0,0,0,3,0,0,0,3,0,0,0,1},
-  {1,0,0,0,0,0,2,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,2,2,0,2,2,0,0,0,0,3,0,3,0,3,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,4,4,4,4,4,4,4,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,4,0,4,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,4,0,0,0,0,5,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,4,0,4,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,4,0,4,4,4,4,4,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,4,4,4,4,4,4,4,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1}
-};
-
 void
-state_init(state_t *state, config_t *config)
-{ 
+state_init (state_t *state, config_t *config)
+{
   /* Set the window to be running */
   state->running = true;
 
+  /* set the resolution to be the config resolution */
+  state->resolution.x = (int) config->window_width;
+  state->resolution.y = (int) config->window_height;
+  
   /* setup the player's location on the map */
   state->player.pos   = (vec2s) { 22.0f, 12.0f  };
   state->player.dir   = (vec2s) { -1.0f,  0.0f  };
   state->camera_plane = (vec2s) {  0.0f,  0.66f };
 
   /* set up the map */
-  state->map = MAP;
-  state->map_size = (vec2s) {
-    (float) MAP_WIDTH, (float) MAP_HEIGHT
-  };
+  memcpy(state->map, MAP, MAP_WIDTH * MAP_HEIGHT * sizeof(int));
+  state->map_size = (ivec2s) { MAP_WIDTH, MAP_HEIGHT };
+
+  /* initialize all of the keys as false */
+  for (int i = 0; i < SDL_NUM_SCANCODES; ++i)
+    state->keys[i] = false;
+
+  /* timer init */
+  state->timer = (fpstimer_t) { 0 };
+
+  /* fonts */
+  for (uint8_t i = 0; i < TOTAL_FONTS; ++i)
+    state->fonts[i] = NULL;
+  
+  if (!TTF_WasInit()) {
+    log_error("TTF was not initialized prior to state initialiation, so fonts cannot be loaded!");
+    exit(EXIT_FAILURE);
+  }
+
+  /* load the deja vu sans mono font */
+  state->fonts[DEJAVU_SANS_MONO] = TTF_OpenFont(DEJAVU_MONO_FONT_PATH,
+						config->debug_font_size);
+  state->debug_font = state->fonts[DEJAVU_SANS_MONO];
 }
 
 void
-state_close(state_t *state)
+state_close (state_t *state)
 {
   
 }

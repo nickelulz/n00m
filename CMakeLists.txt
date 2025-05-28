@@ -34,7 +34,7 @@ target_include_directories(main PRIVATE
   ${CMAKE_SOURCE_DIR}/lib/ini/src/
 )
 
-target_compile_options(main PRIVATE -Wall -Wextra -Wpedantic -O2 -lm)
+target_compile_options(main PRIVATE -Wall -Wextra -Wpedantic -Wno-missing-braces -O2 -lm)
 target_compile_definitions(main PRIVATE LOG_USE_COLOR)
 
 target_link_libraries(main
