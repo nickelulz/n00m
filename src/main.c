@@ -1,5 +1,8 @@
 #include <stdio.h>
+#include <time.h>
+#include <stdarg.h>
 #include "lib_common.h"
+#include <cglm/struct/vec2.h>
 
 #include "color.h"
 #include "config.h"
@@ -150,50 +153,95 @@ poll_events (state_t *state)
 static void
 handle_keys(state_t *state)
 {
+  player_t *player = &state->player;
+
+  
   if (state->keys[SDL_SCANCODE_ESCAPE])
     state->running = false;
+
+  const bool UP    = state->keys[SDL_SCANCODE_UP];
+  const bool DOWN  = state->keys[SDL_SCANCODE_DOWN];
+  const bool RIGHT = state->keys[SDL_SCANCODE_RIGHT];
+  const bool LEFT  = state->keys[SDL_SCANCODE_LEFT];
+  
+  /* if both keys are pressed simultaneously, do nothing
+     move forward or backward if no wall is present */
+  if (!(UP && DOWN) && (UP || DOWN))
+  {
+    vec2s position_delta = glms_vec2_scale(player->dir, player->speed_adjusted);
+    vec2s new_pos;
+    
+    /* calculate the new position based on adding or subtracting the change */
+    if (UP)
+      /* moving forward */
+      new_pos = glms_vec2_add(player->pos, position_delta);
+    else if (DOWN)
+      /* moving backward */
+      new_pos = glms_vec2_sub(player->pos, position_delta);
+
+    ivec2s map_pos = { (int) round(new_pos.x), (int) round(new_pos.y) };
+    
+    /* set the new position if no wall is present */
+    if (state->map[map_pos.x][map_pos.y] == MAP_OPEN)
+      player->pos.x = new_pos.x;
+    if (state->map[map_pos.x][map_pos.y] == MAP_OPEN)
+      player->pos.y = new_pos.y;
+  }
+  
+  /* if both are pressed, do nothing
+     rightward rotation */
+  if (!(RIGHT && LEFT) && (RIGHT || LEFT))
+  {
+    float rotation_speed = player->rot_speed_adjusted;
+
+    if (LEFT)
+      rotation_speed = -rotation_speed;
+    
+    /* calculate the new direction by multiplying by the rotation matrix */
+    player->dir         = glms_vec2_rotate(player->dir,         rotation_speed);
+    state->camera_plane = glms_vec2_rotate(state->camera_plane, rotation_speed);
+  }
+}
+
+static void
+debug_printf (graphics_t *gfx, state_t *state, const char *fmt, ...)
+{
+  char buffer[512];
+
+  /* format the string using variable argument list */
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(buffer, sizeof(buffer), fmt, args);
+  va_end(args);
+
+  /* configure the text's position (top right corner) */
+  ivec2s text_pos = { DEBUG_TEXT_PADDING, state->debug_line_y };
+  
+  /* calculate the projected text size */
+  int text_height;
+  if (TTF_SizeText(state->debug_font, buffer, NULL, &text_height) < 0) {
+    log_error("Unable to calculate projected debug text size! "
+	      "Increasing debug line by 10 pixels.");
+    text_height = 10; /* px */
+  }
+
+  state->debug_line_y += text_height / FONT_SCALAR;
+  graphics_draw_text(gfx, state->debug_font, buffer,
+		     COLOR_BLACK, COLOR_LIGHT_GRAY,
+		     text_pos.x, text_pos.y, 2);
 }
 
 static void
 draw_debug(graphics_t *gfx, state_t *state)
 {
-  char debug_text_buffer[512];
-  if (!state->timer.infinite_fps)
-    snprintf(debug_text_buffer, 512, "FPS: %.1f", state->timer.fps);
-  else
-    snprintf(debug_text_buffer, 512, "FPS: Infinite");
+  state->debug_line_y = DEBUG_TEXT_PADDING;
 
-  /* render the text to a surface */
-  SDL_Surface *text_surface = TTF_RenderText_Solid(state->debug_font,
-						   debug_text_buffer,
-						   COLOR_WHITE);
-  
-  /* render the surface to a texture */
-  SDL_Texture *rendered_texture = SDL_CreateTextureFromSurface(gfx->renderer,
-							       text_surface);
-  
-  /* configure the text's position (top right corner) */
-  vec2s text_pos;
-  ivec2s text_size;
-  SDL_Rect text_bb = { 0, 0, 100, 100 };
-  
-  /* calculate the projected text size */
-  if (TTF_SizeText(state->debug_font, debug_text_buffer,
-		   &text_size.x, &text_size.y) < 0)
-    log_error("Unable to calculate projected debug text size! Using default sizing values.");
-  else {
-    text_pos.x = state->resolution.x - text_size.x - DEBUG_TEXT_PADDING;
-    text_pos.y = DEBUG_TEXT_PADDING - 2;
-    text_bb = (SDL_Rect) { text_pos.x, text_pos.y,
-			   (float) text_size.x, (float) text_size.y };
-  }
-  
-  /* draw the final texture to the screen */
-  SDL_RenderCopy(gfx->renderer, rendered_texture, NULL, &text_bb);
-
-  /* free the previous surfaces and textures */
-  SDL_FreeSurface(text_surface);
-  SDL_DestroyTexture(rendered_texture);
+  char fps_num[32];
+  snprintf(fps_num, sizeof(fps_num), "%.1f", state->timer.fps);
+  debug_printf(gfx, state, "FPS: %s", state->timer.infinite_fps ? "Infinite" : fps_num);
+  debug_printf(gfx, state, "Position: %.1f, %.1f", state->player.pos.x, state->player.pos.y);
+  debug_printf(gfx, state, "Direction: %.1f, %.1f", state->player.dir.x, state->player.dir.y);
+  debug_printf(gfx, state, "In Bounds? %s", state->player.out_of_bounds ? "NO" : "YES");
 }
   
 int
@@ -201,10 +249,13 @@ main (void)
 {
   log_info("Initializing");
 
+  /* setup the random number generator */
+  srand(time(0));
+  
   /* note: DO NOT break the initialization order */
   
   config_t config;
-  config_load(&config, CONFIG_FILEPATH);
+  config_load(&config);
 
   graphics_t gfx;
   graphics_init(&gfx, &config);
@@ -228,6 +279,10 @@ main (void)
     /* Poll for events  */
     poll_events(&state);
     handle_keys(&state);
+
+    /* check if position is out of bounds */
+    if (state.map[(int) state.player.pos.x][(int) state.player.pos.y] != MAP_OPEN)
+      state.player.out_of_bounds = true;
     
     /* Initialize the renderer color the background */
     SDL_SetRenderDrawColor(gfx.renderer, EXPAND_COLOR(COLOR_BLACK));
@@ -244,12 +299,17 @@ main (void)
     uint64_t frame_end = SDL_GetPerformanceCounter();
     uint64_t frame_diff = frame_end - frame_begin;
     float frequency = (float) SDL_GetPerformanceFrequency();
+    float seconds_elapsed = frame_diff / frequency;
     
-    state.timer.fps = frame_diff / frequency;
+    state.timer.fps = seconds_elapsed;
     if (state.timer.fps < 0.1)
       state.timer.infinite_fps = true;
     else
       state.timer.infinite_fps = false;
+
+    /* adjust rotation and movement speeds */
+    state.player.speed_adjusted     = seconds_elapsed * state.player.speed;
+    state.player.rot_speed_adjusted = seconds_elapsed * state.player.rot_speed;
     
     /* increase frame counter */
     ++state.timer.frames;

@@ -8,6 +8,7 @@
 /* TEMPORARY */
 #define MAP_WIDTH  24
 #define MAP_HEIGHT 24
+#define MAP_OPEN   0
 
 static const
 int MAP[MAP_WIDTH][MAP_HEIGHT]=
@@ -58,6 +59,7 @@ typedef struct _state {
   /* loaded fonts */
   TTF_Font *fonts[TOTAL_FONTS];
   TTF_Font *debug_font;
+  int debug_line_y;
   
   player_t player;
   fpstimer_t timer;
