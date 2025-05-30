@@ -17,6 +17,6 @@ void config_close (config_t *config);
 #define CONFIG_FILEPATH       "./config.ini"
 #define DEBUG_TEXT_PADDING    5 /* pixels */
 #define DEBUG_LINE_SPACING    4 /* pixels */
-#define FONT_SCALAR           8
+#define FONT_SCALAR           20
 
 #endif

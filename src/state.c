@@ -7,6 +7,20 @@
 #include "config.h"
 #include "util.h"
 
+int
+map_at_vec (state_t *state, ivec2s pos)
+{
+  if (!in_bounds(state, pos.x, pos.y))
+    return NOT_FOUND;
+  return state->map[pos.y][pos.x];
+}
+
+int
+map_at (state_t *state, int x, int y)
+{
+  return state->map[y][x];
+}
+
 void
 state_init (state_t *state, config_t *config)
 {

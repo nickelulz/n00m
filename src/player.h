@@ -8,8 +8,9 @@ typedef struct _player {
   float speed, rot_speed;
   float speed_adjusted, rot_speed_adjusted;
 
-  /* player out-of-bounds monitor */
+  /* debug monitors */
   bool out_of_bounds;
+  bool blocked[2];
 } player_t;
 
 #endif

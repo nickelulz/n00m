@@ -50,7 +50,6 @@ enum { DEJAVU_SANS_MONO, TOTAL_FONTS };
 
 typedef struct _state {
   bool running;
-  int map[MAP_WIDTH][MAP_HEIGHT];
   bool keys[SDL_NUM_SCANCODES];
   vec2s camera_plane;
   ivec2s map_size;
@@ -60,12 +59,18 @@ typedef struct _state {
   TTF_Font *fonts[TOTAL_FONTS];
   TTF_Font *debug_font;
   int debug_line_y;
+
+  /* map information */
+  int map[MAP_WIDTH][MAP_HEIGHT];
   
   player_t player;
   fpstimer_t timer;
 } state_t;
 
-void state_init (state_t *state, config_t *config);
+
+int  map_at_vec  (state_t *state, ivec2s pos);
+int  map_at      (state_t *state, int x, int y);
+void state_init  (state_t *state, config_t *config);
 void state_close (state_t *state);
 
 #endif
