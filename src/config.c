@@ -12,7 +12,7 @@ random_window_title_motd (char *buffer)
     "is this thing on?"
   };
 
-  snprintf(buffer, 512, "n00m: %s", WINDOW_MOTDS[randint(0, 4)]);
+  snprintf(buffer, 512, "n00m: %s", WINDOW_MOTDS[randint(0, 3)]);
 }
 
 void

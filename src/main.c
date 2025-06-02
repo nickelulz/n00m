@@ -1,40 +1,15 @@
 #include <stdio.h>
 #include <time.h>
 #include <stdarg.h>
-#include "lib_common.h"
 #include <float.h>
+#include "lib_common.h"
 
 #include "color.h"
 #include "config.h"
 #include "graphics.h"
 #include "state.h"
-
-#define LOG_DEBUG_ONCE(fmt, ...) \
-  { \
-    static bool has_been_printed = false; \
-    if (!has_been_printed) { \
-      log_debug(fmt, __VA_ARGS__); \
-      has_been_printed = true; \
-    } \
-  }
-
-#define VEC2_INT(vec) \
-  (ivec2s) { (int) vec.x, (int) vec.y }
-
-#define VEC2_FLT(vec) \
-  (vec2s) { (float) vec.x, (float) vec.y }
-
-static SDL_Color
-get_map_color (int map_value)
-{
-  switch (map_value) {
-  case 1: return COLOR_RED;
-  case 2: return COLOR_GREEN;
-  case 3: return COLOR_BLUE;
-  case 4: return COLOR_ORANGE;
-  default: return COLOR_WHITE;
-  }
-}
+#include "util.h"
+#include "map.h"
 
 static void
 draw_current_frame (graphics_t *gfx, state_t *state)
@@ -105,7 +80,7 @@ draw_current_frame (graphics_t *gfx, state_t *state)
       }
 
       /* check if ray has hit a wall */
-      if (state->map[map_pos.y][map_pos.x] > 0)
+      if (map_at_vec(&state->map, map_pos) > 0)
         wall_hit = true;
     }
 
@@ -127,7 +102,7 @@ draw_current_frame (graphics_t *gfx, state_t *state)
       draw_end = resolution.y - 1;
 
     /* color in the wall based on its color */
-    SDL_Color wall_color = get_map_color(state->map[map_pos.y][map_pos.x]);
+    SDL_Color wall_color = map_get_color(map_at_vec(&state->map, map_pos));
 
     /* give x and y sides different brightness */
     if (side_wall_hit)
@@ -149,9 +124,9 @@ draw_mini_map (graphics_t *gfx, state_t *state)
   static const uint8_t PLAYER_SIZE = 4; /* width/height of the player icon */ 
 
   /* set up the box sizing for the outer box */
-  static const ivec2s full_minimap_size = {
-    MAP_WIDTH  * BOX_SIZE + 2 * PADDING,
-    MAP_HEIGHT * BOX_SIZE + 2 * PADDING
+  ivec2s full_minimap_size = {
+    state->map.size.x * BOX_SIZE + 2 * PADDING,
+    state->map.size.y * BOX_SIZE + 2 * PADDING
   };
 
 
@@ -173,24 +148,20 @@ draw_mini_map (graphics_t *gfx, state_t *state)
   ivec2s box_top_left = glms_ivec2_adds(full_minimap_position, PADDING);
   
   LOG_DEBUG_ONCE("full_minimap_position %d %d", full_minimap_position.x, full_minimap_position.y);
-  LOG_DEBUG_ONCE("box_top_left %d %d", box_top_left.x, box_top_left.y);
+  LOG_DEBUG_ONCE("box_top_left %d %d",          box_top_left.x,          box_top_left.y);
   
   /* draw all of the boxes */
-  for (int x = 0; x < MAP_WIDTH; ++x) {
-    for (int y = 0; y < MAP_HEIGHT; ++y) {      
+  for (int x = 0; x < state->map.size.x; ++x) {
+    for (int y = 0; y < state->map.size.y; ++y) {      
       /* get the fill color from the position */
-      int map_value = state->map[y][x];
-      SDL_Color fill_color;
-      if (map_value == MAP_OPEN)
-	fill_color = COLOR_BLACK;
-      else
-	fill_color = get_map_color(map_value);
+      int map_value = map_at(&state->map, x, y);
+      SDL_Color fill_color = map_value == MAP_OPEN ? COLOR_BLACK : map_get_color(map_value);
 
       /* calculate the fill position from the r,c value */
       SDL_Rect box = {
-	box_top_left.x + BOX_SIZE * x,
-	box_top_left.y + BOX_SIZE * y,
-	BOX_SIZE, BOX_SIZE,
+        box_top_left.x + BOX_SIZE * x,
+        box_top_left.y + BOX_SIZE * y,
+        BOX_SIZE, BOX_SIZE,
       };
 
       LOG_DEBUG_ONCE("box %d %d %d %d",
@@ -232,7 +203,7 @@ draw_mini_map (graphics_t *gfx, state_t *state)
   direction_vector = glms_vec2_scale(direction_vector, view_line_distance);
 
   ivec2s direction_vector_end = glms_ivec2_add(VEC2_INT(direction_vector),
-					       player_indicator_center);
+                                               player_indicator_center);
   
   /* draw the vector to the screen */
   SDL_SetRenderDrawColor(gfx->renderer, EXPAND_COLOR(COLOR_LIGHT_GRAY));
@@ -264,10 +235,9 @@ poll_events (state_t *state)
 }
 
 static void
-handle_keys(state_t *state)
+handle_keys (state_t *state)
 {
   player_t *player = &state->player;
-
   
   if (state->keys[SDL_SCANCODE_ESCAPE])
     state->running = false;
@@ -276,6 +246,9 @@ handle_keys(state_t *state)
   const bool DOWN  = state->keys[SDL_SCANCODE_DOWN]  || state->keys[SDL_SCANCODE_S];
   const bool RIGHT = state->keys[SDL_SCANCODE_RIGHT] || state->keys[SDL_SCANCODE_D];
   const bool LEFT  = state->keys[SDL_SCANCODE_LEFT]  || state->keys[SDL_SCANCODE_A];
+
+  player->blocked[0] = false;
+  player->blocked[1] = false;
   
   /* if both keys are pressed simultaneously, do nothing
      move forward or backward if no wall is present */
@@ -284,38 +257,51 @@ handle_keys(state_t *state)
     /* calculate the new position based on adding or subtracting the change */
     float dir_sign = UP ? 1.0f : -1.0f;
     vec2s position_delta = glms_vec2_scale(player->dir, player->speed_adjusted * dir_sign);
-    vec2s pos_change = glms_vec2_add(player->pos, position_delta);
-    ivec2s new_pos = VEC2_INT(pos_change);
+    vec2s tentative_pos = glms_vec2_add(player->pos, position_delta);
 
-    LOG_DEBUG_ONCE("new_pos %d %d", new_pos.x, new_pos.y);
-    
-    /* set the new position if no wall is present */
-    ivec2s x_check = { new_pos.x, (int) player->pos.y };
-    if (map_at(state, x_check.x, x_check.y) == MAP_OPEN)
-      player->pos.x = new_pos.x;
+    /* x-axis movement (check y unchanged) */
+    if (map_at(&state->map, (int)tentative_pos.x, (int)player->pos.y) == MAP_OPEN)
+      player->pos.x = tentative_pos.x;
     else
       player->blocked[0] = true;
 
-    // Check y movement
-    ivec2s y_check = { (int)player->pos.x, (int)new_pos.y };
-    if (map_at(state, y_check.x, y_check.y) == MAP_OPEN)
-      player->pos.y = new_pos.y;
+    /* y-axis movement (check x possibly updated) */
+    if (map_at(&state->map, (int)player->pos.x, (int)tentative_pos.y) == MAP_OPEN)
+      player->pos.y = tentative_pos.y;
     else
       player->blocked[1] = true;
   }
-  
-  /* if both are pressed, do nothing
-     rightward rotation */
+
+  /* stafing */
   if (RIGHT ^ LEFT)
   {
-    float rotation_speed = player->rot_speed_adjusted;
+    float strafe_sign = RIGHT ? 1.0f : -1.0f;
 
-    if (LEFT)
-      rotation_speed = -rotation_speed;
-    
-    /* calculate the new direction by multiplying by the rotation matrix */
-    player->dir         = glms_vec2_rotate(player->dir,         rotation_speed);
-    state->camera_plane = glms_vec2_rotate(state->camera_plane, rotation_speed);
+    /* perpendicular to player->dir is (dir.y, -dir.x) */
+    vec2s strafe_dir = { player->dir.y, -player->dir.x };
+    vec2s strafe_delta = glms_vec2_scale(strafe_dir, player->speed_adjusted * strafe_sign);
+    vec2s tentative_pos = glms_vec2_add(player->pos, strafe_delta);
+
+    if (map_at(&state->map, (int) tentative_pos.x, (int) player->pos.y) == MAP_OPEN)
+        player->pos.x = tentative_pos.x;
+    else
+        player->blocked[0] = true;
+
+    if (map_at(&state->map, (int) player->pos.x, (int) tentative_pos.y) == MAP_OPEN)
+        player->pos.y = tentative_pos.y;
+    else
+        player->blocked[1] = true;
+  }
+  
+  SDL_GetRelativeMouseState(&state->mouse_pos_delta.x,
+                            &state->mouse_pos_delta.y);
+  
+  int mouse_dx = state->mouse_pos_delta.x;
+  float sens = state->mouse_sensitivity;
+  float total_rotation = -mouse_dx * sens;
+  if (total_rotation != 0.0f) {
+    player->dir         = glms_vec2_rotate(player->dir,         total_rotation);
+    state->camera_plane = glms_vec2_rotate(state->camera_plane, total_rotation);
   }
 }
 
@@ -348,7 +334,7 @@ debug_printf (graphics_t *gfx, state_t *state, const char *fmt, ...)
 }
 
 static void
-draw_debug(graphics_t *gfx, state_t *state)
+draw_debug (graphics_t *gfx, state_t *state)
 {
   state->debug_line_y = DEBUG_TEXT_PADDING;
 
@@ -365,8 +351,64 @@ draw_debug(graphics_t *gfx, state_t *state)
   debug_printf(gfx, state, "Blocked? %s %s",
 	       state->player.blocked[0] ? "YES" : "NO",
 	       state->player.blocked[1] ? "YES" : "NO");
+  debug_printf(gfx, state, "Sensitivity: %f", state->mouse_sensitivity);
 }
-  
+
+static void
+loop (state_t *state, graphics_t *gfx)
+{
+    /* time current frame */
+    state->timer.ticks = SDL_GetTicks();
+    uint64_t frame_begin = SDL_GetPerformanceCounter();
+    state->timer.last_update_time = frame_begin;
+
+    /* poll the current window size */
+    SDL_GetWindowSize(gfx->window,
+		      &state->resolution.x,
+		      &state->resolution.y);
+    
+    /* Poll for events */
+    poll_events(state);
+    handle_keys(state);
+
+    /* check if position is out of bounds */
+    if (map_at_fvec(&state->map, state->player.pos) != MAP_OPEN)
+      state->player.out_of_bounds = true;
+    else
+      state->player.out_of_bounds = false;
+    
+    /* Initialize the renderer color the background */
+    SDL_SetRenderDrawColor(gfx->renderer, EXPAND_COLOR(COLOR_BLACK));
+    SDL_RenderClear(gfx->renderer);
+
+    /* draw the current frame */
+    draw_current_frame(gfx, state);
+    draw_mini_map(gfx, state);
+    draw_debug(gfx, state);
+
+    /* Update the Screen */
+    SDL_RenderPresent(gfx->renderer);
+
+    /* time frame and calculate fps */
+    uint64_t frame_end = SDL_GetPerformanceCounter();
+    uint64_t frame_diff = frame_end - frame_begin;
+    float frequency = (float) SDL_GetPerformanceFrequency();
+    float seconds_elapsed = frame_diff / frequency;
+    
+    state->timer.fps = seconds_elapsed;
+    if (state->timer.fps < 0.1)
+      state->timer.infinite_fps = true;
+    else
+      state->timer.infinite_fps = false;
+
+    /* adjust rotation and movement speeds */
+    state->player.speed_adjusted     = seconds_elapsed * state->player.speed;
+    state->player.rot_speed_adjusted = seconds_elapsed * state->player.rot_speed;
+    
+    /* increase frame counter */
+    ++state->timer.frames;
+}
+
 int
 main (void)
 {
@@ -374,8 +416,6 @@ main (void)
 
   /* setup the random number generator */
   srand(time(0));
-  
-  /* note: DO NOT break the initialization order */
   
   config_t config;
   config_load(&config);
@@ -388,58 +428,8 @@ main (void)
 
   log_info("Looping");
   
-  while (state.running) {
-    /* time current frame */
-    state.timer.ticks = SDL_GetTicks();
-    uint64_t frame_begin = SDL_GetPerformanceCounter();
-    state.timer.last_update_time = frame_begin;
-
-    /* poll the current window size */
-    SDL_GetWindowSize(gfx.window,
-		      &state.resolution.x,
-		      &state.resolution.y);
-    
-    /* Poll for events  */
-    poll_events(&state);
-    handle_keys(&state);
-
-    /* check if position is out of bounds */
-    if (state.map[(int) state.player.pos.x][(int) state.player.pos.y] != MAP_OPEN)
-      state.player.out_of_bounds = true;
-    else
-      state.player.out_of_bounds = false;
-    
-    /* Initialize the renderer color the background */
-    SDL_SetRenderDrawColor(gfx.renderer, EXPAND_COLOR(COLOR_BLACK));
-    SDL_RenderClear(gfx.renderer);
-
-    /* draw the current frame */
-    draw_current_frame(&gfx, &state);
-    draw_mini_map(&gfx, &state);
-    draw_debug(&gfx, &state);
-
-    /* Update the Screen */
-    SDL_RenderPresent(gfx.renderer);
-
-    /* time frame and calculate fps */
-    uint64_t frame_end = SDL_GetPerformanceCounter();
-    uint64_t frame_diff = frame_end - frame_begin;
-    float frequency = (float) SDL_GetPerformanceFrequency();
-    float seconds_elapsed = frame_diff / frequency;
-    
-    state.timer.fps = seconds_elapsed;
-    if (state.timer.fps < 0.1)
-      state.timer.infinite_fps = true;
-    else
-      state.timer.infinite_fps = false;
-
-    /* adjust rotation and movement speeds */
-    state.player.speed_adjusted     = seconds_elapsed * state.player.speed;
-    state.player.rot_speed_adjusted = seconds_elapsed * state.player.rot_speed;
-    
-    /* increase frame counter */
-    ++state.timer.frames;
-  }
+  while (state.running)
+    loop(&state, &gfx);
   
   log_info("Closing");
   
