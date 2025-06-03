@@ -15,12 +15,19 @@ typedef struct _fpstimer {
 /* fonts */
 enum { DEJAVU_SANS_MONO, TOTAL_FONTS };
 
+#define TEXTURE_WIDTH  64
+#define TEXTURE_HEIGHT 64
+#define NUM_TEXTURES   8
+
 typedef struct _state {
   bool running;
   vec2s camera_plane;
   ivec2s map_size;
   ivec2s resolution;
 
+  /* textures */
+  uint32_t *textures[NUM_TEXTURES];
+  
   /* loaded fonts */
   TTF_Font *fonts[TOTAL_FONTS];
   TTF_Font *debug_font;
@@ -37,6 +44,7 @@ typedef struct _state {
   player_t player;
   fpstimer_t timer;
 } state_t;
+
 
 void state_init  (state_t *state, config_t *config);
 void state_close (state_t *state);

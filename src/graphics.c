@@ -6,6 +6,26 @@
 #include "graphics.h"
 
 void
+graphics_draw_pixel_buffer(graphics_t *gfx, ivec2s resolution, uint32_t *pixels)
+{
+  void *texture_pixels;
+  int pitch;
+
+  /* lock the texture for writing */
+  if (SDL_LockTexture(gfx->screen_texture, NULL, &texture_pixels, &pitch) == 0) {
+    /* copy the buffer into the texture */
+    for (int y = 0; y < resolution.y; ++y)
+      memcpy((uint8_t*) texture_pixels + y * pitch,
+             pixels + y * resolution.x,
+             resolution.x * sizeof(uint32_t));
+    SDL_UnlockTexture(gfx->screen_texture);
+  }
+
+  SDL_RenderClear(gfx->renderer);
+  SDL_RenderCopy(gfx->renderer, gfx->screen_texture, NULL, NULL);
+}
+  
+void
 graphics_draw_text (graphics_t *gfx, TTF_Font *font, const char *text,
 		    SDL_Color text_color, SDL_Color background_color,
 		    int x, int y, int padding)
@@ -97,7 +117,7 @@ graphics_init (graphics_t *gfx, config_t *config)
   }
 
   gfx->renderer = SDL_CreateRenderer(gfx->window, -1,
-                                     SDL_RENDERER_ACCELERATED);
+                                     SDL_RENDERER_PRESENTVSYNC);
 
   if (!gfx->renderer) {
     log_fatal("Renderer could not be created!\n"
@@ -106,11 +126,18 @@ graphics_init (graphics_t *gfx, config_t *config)
     SDL_Quit();
     exit(EXIT_FAILURE);
   }
+
+  gfx->screen_texture = SDL_CreateTexture(gfx->renderer,
+                                          SDL_PIXELFORMAT_RGBA8888,
+                                          SDL_TEXTUREACCESS_STREAMING,
+                                          config->window_width,
+                                          config->window_height);
 }
 
 void
 graphics_close (graphics_t *gfx)
 {
+  SDL_DestroyTexture(gfx->screen_texture);
   SDL_DestroyRenderer(gfx->renderer);
   SDL_DestroyWindow(gfx->window);
 

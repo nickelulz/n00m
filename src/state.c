@@ -16,7 +16,7 @@ player_init(player_t *player, map_t *map)
   player->rot_speed_adjusted = 0.0f;
 
   /* setup the player's location on the map */
-  player->pos       = (vec2s) { 22.0f, 12.0f  };
+  player->pos       = (vec2s) { 22.0f, 14.0f  };
   player->dir       = (vec2s) { -1.0f,  0.0f  };
   player->speed     = 5.0f;
   player->rot_speed = 3.0f;
@@ -50,6 +50,49 @@ state_init (state_t *state, config_t *config)
   /* timer init */
   state->timer = (fpstimer_t) { 0 };
 
+  // Allocate each texture dynamically
+  for (int i = 0; i < 8; ++i) {
+    state->textures[i] = malloc(sizeof(uint32_t) * TEXTURE_WIDTH * TEXTURE_HEIGHT);
+    if (!state->textures[i]) {
+      fprintf(stderr, "Failed to allocate memory for texture %d\n", i);
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  // Populate texture data
+  for (int x = 0; x < TEXTURE_WIDTH; ++x) {
+    for (int y = 0; y < TEXTURE_HEIGHT; ++y) {
+      int xorcolor = (x * 256 / TEXTURE_WIDTH) ^ (y * 256 / TEXTURE_HEIGHT);
+      int ycolor   = y * 256 / TEXTURE_HEIGHT;
+      int xycolor  = y * 128 / TEXTURE_HEIGHT + x * 128 / TEXTURE_WIDTH;
+      int idx      = y * TEXTURE_WIDTH + x;
+
+      // flat red texture with black cross
+      state->textures[0][idx] = 65536 * 254 * (x != y && x != TEXTURE_WIDTH - y);
+
+      // sloped greyscale
+      state->textures[1][idx] = xycolor + 256 * xycolor + 65536 * xycolor;
+
+      // sloped yellow gradient
+      state->textures[2][idx] = 256 * xycolor + 65536 * xycolor;
+
+      // xor greyscale
+      state->textures[3][idx] = xorcolor + 256 * xorcolor + 65536 * xorcolor;
+
+      // xor green
+      state->textures[4][idx] = 256 * xorcolor;
+
+      // red bricks
+      state->textures[5][idx] = 65536 * 192 * (x % 16 && y % 16);
+
+      // red gradient
+      state->textures[6][idx] = 65536 * ycolor;
+
+      // flat grey texture
+      state->textures[7][idx] = 128 + 256 * 128 + 65536 * 128;
+    }
+  }
+  
   /* fonts */
   for (uint8_t i = 0; i < TOTAL_FONTS; ++i)
     state->fonts[i] = NULL;
@@ -73,4 +116,9 @@ void
 state_close (state_t *state)
 {
   map_close(&state->map);
+
+  for (int i = 0; i < 8; ++i) {
+    free(state->textures[i]);
+    state->textures[i] = NULL;
+  }
 }

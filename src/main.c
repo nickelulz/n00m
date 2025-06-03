@@ -13,10 +13,26 @@
 
 static void
 draw_current_frame (graphics_t *gfx, state_t *state)
-{
+{  
   /* Get the current box of the map that we are in */
   player_t *player = &state->player;
   ivec2s resolution = state->resolution;
+
+  /* pixel buffer */
+  uint32_t *buffer = (uint32_t *) calloc(resolution.x * resolution.y, sizeof(uint32_t));
+
+  /* set the screen */
+  uint32_t ceiling_color = 0xFF202020; // dark gray or blackish
+  uint32_t floor_color   = 0xFF000000; // black
+
+  for (int y = 0; y < resolution.y; ++y) {
+    for (int x = 0; x < resolution.x; ++x) {
+      if (y < resolution.y / 2)
+        buffer[y * resolution.x + x] = ceiling_color;
+      else
+        buffer[y * resolution.x + x] = floor_color;
+    }
+  }
   
   for (int x = 0; x < resolution.x; ++x) {
     float camera_x = 2 * ((float) x  / resolution.x) - 1;
@@ -101,17 +117,46 @@ draw_current_frame (graphics_t *gfx, state_t *state)
     if (draw_end >= resolution.y)
       draw_end = resolution.y - 1;
 
-    /* color in the wall based on its color */
-    SDL_Color wall_color = map_get_color(map_at_vec(&state->map, map_pos));
+    /* texturing calculations
+       subtracted from 1 so that texture 0 can be used */
+    int tex_index = map_at_vec(&state->map, map_pos) - 1;
 
-    /* give x and y sides different brightness */
+    /* exactly where the wall was hit */
+    float wall_x;
+
     if (side_wall_hit)
-      wall_color.a = wall_color.a / 2;
+      wall_x = map_pos.y + perp_wall_dist * ray_dir.y;
+    else
+      wall_x = map_pos.x + perp_wall_dist * ray_dir.x;
+    wall_x -= floor(wall_x);
 
-    /* draw the vertical line */
-    SDL_SetRenderDrawColor(gfx->renderer, EXPAND_COLOR(wall_color));
-    SDL_RenderDrawLine(gfx->renderer, x, draw_start, x, draw_end);
+    /* coodinate on the texture */
+    int tex_x = (int) (wall_x * TEXTURE_WIDTH);
+    if ((!side_wall_hit && ray_dir.x > 0) || (side_wall_hit && ray_dir.y < 0))
+      tex_x = TEXTURE_WIDTH - tex_x - 1;
+
+    float stepf = (float) TEXTURE_HEIGHT / line_height;
+    /* starting texture coordinate */
+    float tex_pos = (draw_start - resolution.y / 2 + line_height / 2) * stepf;
+    
+    for (int y = draw_start; y < draw_end; ++y) {
+      /* cast the texture coordinate to an integer and mask with
+         (TEXTURE_HEIGHT - 1) in case of overflow */
+      int tex_y = (int) tex_pos & (TEXTURE_HEIGHT - 1);
+      tex_pos += stepf;
+      uint32_t color = (uint32_t) state->textures[tex_index][TEXTURE_HEIGHT * tex_y + tex_x];
+
+      /* make color darker for y-sides: R, G and B byte each divided
+         through two with a "shift" and an "and" */
+      /* if (side_wall_hit)
+         color = (color >> 1) & 0x7F7F7F; */
+      buffer[y * resolution.x + x] = color;
+    }
   }
+
+  /* draw the final buffer to the screen */
+  graphics_draw_pixel_buffer(gfx, resolution, buffer);
+  free(buffer);
 }
 
 static void
